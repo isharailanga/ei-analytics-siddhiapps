@@ -22,15 +22,17 @@ define stream PreProcessedMediatorStatStream (meta_tenantId int, entryPoint stri
 -- defines the DecompressedEventStream, which stores decompressed CompressedEventStream data
 define stream DecompressedEventStream (meta_tenantId int, messageFlowId string, host string, hashCode string, componentName string, componentType string, componentIndex int, componentId string, startTime long, endTime long, duration long, beforePayload string, afterPayload string, contextPropertyMap string, transportPropertyMap string, children string, entryPoint string, entryPointHashcode string, faultCount int, _timestamp long);
 
+-- Tables
+
 -- table that stores ESBEventStream data
 @store(type = 'rdbms', datasource = 'EI_ANALYTICS2')
 define table ESBEventTable (meta_tenantId int, messageFlowId string, host string, hashCode string, componentName string, componentType string, componentIndex int, componentId string, startTime long, endTime long, duration long, beforePayload string, afterPayload string, contextPropertyMap string, transportPropertyMap string, children string, entryPoint string, entryPointHashcode string, faultCount int, _timestamp long);
 
--- Tables
-
 -- table that stores ConfigEntryEventStream data
 @store(type = 'rdbms', datasource = 'EI_ANALYTICS2')
-define table ConfigEntryTable (meta_tenantId int, hashcode string, entryName string, configData string);
+define table ConfigEntryTable (meta_tenantId int, hashcode string, entryName string, configData string, _timestamp long);
+
+-- Aggregations
 
 -- aggregates PreProcessedMediatorStatStream data every minute to month
 @store(type = 'rdbms', datasource = 'EI_ANALYTICS2')
@@ -40,8 +42,6 @@ from PreProcessedMediatorStatStream
 select meta_tenantId, entryPoint, entryPointHashcode, componentId, hashCode, componentName, componentType, sum(duration) as totalDuration, min(duration) as minDuration, max(duration) as maxDuration, count() as noOfInvocation, sum(faultCount) as faultCount, startTime 
 	group by meta_tenantId, componentId, componentName, componentType, entryPoint, entryPointHashcode, hashCode 
 	aggregate by startTime every minutes...months;
-
--- Aggregations
 
 -- aggregates PreProcessedESBStatStream data every minute to month
 @store(type = 'rdbms', datasource = 'EI_ANALYTICS2')
@@ -56,12 +56,12 @@ select componentId, componentName, componentType, sum(duration) as totalDuration
 
 -- decompress CompressedEventStream and store data in DecompressedEventStream
 from CompressedEventStream#esbAnalytics:decompress(meta_compressed, meta_tenantId, messageId, flowData) 
-select metaTenantId as meta_tenantId, messageFlowId, host, hashCode, componentName, componentType, componentIndex, componentId, startTime, endTime, duration, beforePayload, afterPayload, contextPropertyMap, transportPropertyMap, children, entryPoint, entryPointHashcode, faultCount, _timestamp 
+select metaTenantId as meta_tenantId, messageFlowId, host, hashCode, componentName, str:lower(componentType) as componentType, componentIndex, componentId, startTime, endTime, duration, beforePayload, afterPayload, contextPropertyMap, transportPropertyMap, children, entryPoint, entryPointHashcode, faultCount, _timestamp 
 insert current events into DecompressedEventStream;
 
 -- store ConfigEntryEventStream data into ConfigEntryTable
 from ConfigEntryEventStream 
-select meta_tenantId, hashcode, entryName, configData 
+select meta_tenantId, hashcode, entryName, configData, eventTimestamp() as _timestamp 
 insert current events into ConfigEntryTable;
 
 -- if DecompressedEventStream has beforePayload or transportPropertyMap or contextPropertyMap, add them to into ESBEventTable 
@@ -78,4 +78,3 @@ insert current events into PreProcessedESBStatStream;
 from DecompressedEventStream 
 select meta_tenantId, entryPoint, entryPointHashcode, componentId, hashCode, componentName, componentType, duration, ifThenElse(faultCount > 0, 1, 0) as faultCount, startTime 
 insert current events into PreProcessedMediatorStatStream;
-
