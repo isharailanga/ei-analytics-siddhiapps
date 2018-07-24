@@ -1,23 +1,24 @@
 @App:name('EIStatApp-ESB')
 @App:description('Execution plan for EI Analytics')
 
+
 -- Streams
+
+-- temporary stream to store MediatorStat data
+define stream PreProcessedMediatorStatStream (meta_tenantId int, entryPoint string, entryPointHashcode string, componentId string, hashCode string, componentName string, componentType string, duration long, faultCount int, startTime long);
 
 -- maps Flow Entry into CompressedEventStream
 @source(type = 'wso2event', wso2.stream.id = 'org.wso2.esb.analytics.stream.FlowEntry:1.0.0', 
 	@map(type = 'wso2event'))
 define stream CompressedEventStream (meta_compressed bool, meta_tenantId int, messageId string, flowData string);
 
+-- temporary stream to store ESBStat data
+define stream PreProcessedESBStatStream (componentId string, componentName string, componentType string, duration long, faultCount int, startTime long, entryPoint string, meta_tenantId int);
+
 -- maps Config entry into ConfigEntryEventStream
 @source(type = 'wso2event', wso2.stream.id = 'org.wso2.esb.analytics.stream.ConfigEntry:1.0.0', 
 	@map(type = 'wso2event'))
 define stream ConfigEntryEventStream (meta_tenantId int, hashcode string, entryName string, configData string);
-
--- temporary stream to store ESBStat data
-define stream PreProcessedESBStatStream (componentId string, componentName string, componentType string, duration long, faultCount int, startTime long, entryPoint string, meta_tenantId int);
-
--- temporary stream to store MediatorStat data
-define stream PreProcessedMediatorStatStream (meta_tenantId int, entryPoint string, entryPointHashcode string, componentId string, hashCode string, componentName string, componentType string, duration long, faultCount int, startTime long);
 
 -- defines the DecompressedEventStream, which stores decompressed CompressedEventStream data
 define stream DecompressedEventStream (meta_tenantId int, messageFlowId string, host string, hashCode string, componentName string, componentType string, componentIndex int, componentId string, startTime long, endTime long, duration long, beforePayload string, afterPayload string, contextPropertyMap string, transportPropertyMap string, children string, entryPoint string, entryPointHashcode string, faultCount int, _timestamp long);
@@ -25,17 +26,17 @@ define stream DecompressedEventStream (meta_tenantId int, messageFlowId string, 
 -- Tables
 
 -- table that stores ESBEventStream data
-@store(type = 'rdbms', datasource = 'EI_ANALYTICS2')
+@store(type = 'rdbms', datasource = 'EI_ANALYTICS')
 define table ESBEventTable (meta_tenantId int, messageFlowId string, host string, hashCode string, componentName string, componentType string, componentIndex int, componentId string, startTime long, endTime long, duration long, beforePayload string, afterPayload string, contextPropertyMap string, transportPropertyMap string, children string, entryPoint string, entryPointHashcode string, faultCount int, _timestamp long);
 
 -- table that stores ConfigEntryEventStream data
-@store(type = 'rdbms', datasource = 'EI_ANALYTICS2')
+@store(type = 'rdbms', datasource = 'EI_ANALYTICS')
 define table ConfigEntryTable (meta_tenantId int, hashcode string, entryName string, configData string, _timestamp long);
 
 -- Aggregations
 
 -- aggregates PreProcessedMediatorStatStream data every minute to month
-@store(type = 'rdbms', datasource = 'EI_ANALYTICS2')
+@store(type = 'rdbms', datasource = 'EI_ANALYTICS')
 @info(name = 'MediatorStat')
 define aggregation MediatorStat 
 from PreProcessedMediatorStatStream 
@@ -44,7 +45,7 @@ select meta_tenantId, entryPoint, entryPointHashcode, componentId, hashCode, com
 	aggregate by startTime every minutes...months;
 
 -- aggregates PreProcessedESBStatStream data every minute to month
-@store(type = 'rdbms', datasource = 'EI_ANALYTICS2')
+@store(type = 'rdbms', datasource = 'EI_ANALYTICS')
 @info(name = 'ESBStat')
 define aggregation ESBStat 
 from PreProcessedESBStatStream 
@@ -70,7 +71,7 @@ select meta_tenantId, messageFlowId, host, hashCode, componentName, componentTyp
 insert current events into ESBEventTable;
 
 -- if DecompressedEventStream's componentType is ProxyService or API or InboundEndPoint, add it into PreProcessedESBStatStream 
-from DecompressedEventStream[componentType == 'Proxy Service' OR componentType == 'API' OR componentType == 'Inbound EndPoint'] 
+from DecompressedEventStream[componentType == "proxy service" OR componentType == "api" OR componentType == "inbound endpoint"] 
 select componentId, componentName, componentType, duration, ifThenElse(faultCount > 0, 1, 0) as faultCount, startTime, entryPoint, meta_tenantId 
 insert current events into PreProcessedESBStatStream;
 
@@ -78,3 +79,4 @@ insert current events into PreProcessedESBStatStream;
 from DecompressedEventStream 
 select meta_tenantId, entryPoint, entryPointHashcode, componentId, hashCode, componentName, componentType, duration, ifThenElse(faultCount > 0, 1, 0) as faultCount, startTime 
 insert current events into PreProcessedMediatorStatStream;
+
