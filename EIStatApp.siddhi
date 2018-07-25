@@ -1,10 +1,10 @@
 @App:name('EIStatApp-ESB')
 @App:description('Execution plan for EI Analytics')
 
+-- Streams
+
 -- temporary stream to store MediatorStat data
 define stream PreProcessedMediatorStatStream (meta_tenantId int, entryPoint string, entryPointHashcode string, componentId string, hashCode string, componentName string, componentType string, duration long, faultCount int, startTime long);
-
--- Streams
 
 -- maps Flow Entry into FlowEntryEventStream
 @source(type = 'wso2event', wso2.stream.id = 'org.wso2.esb.analytics.stream.FlowEntry:1.0.0', 
